@@ -1,6 +1,6 @@
 {
   "name": "devsuite-command",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Devsuite command gives you quick access to your projects. ",
   "main": "bin/devsuite",
   "bin": {
