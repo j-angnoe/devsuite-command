@@ -1,0 +1,13 @@
+{
+  "name": "some-subfolder",
+  "version": "0.0.1",
+  "description": "Example subfolder of example-devsuite",
+  "main": "index.js",
+  "scripts": {
+    "somescript" : "echo 'This is somescript defined in example-devsuite-root/some-subfolder/package.json'",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "private" : true,
+  "author": "",
+  "license": "ISC"
+}

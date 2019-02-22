@@ -1,0 +1,273 @@
+#!/usr/bin/env node
+var path = require('path');
+var fs = require('fs');
+var spawn = require('child_process').spawn;
+
+const DEVSUITERC_FILENAME = '.devsuiterc';
+
+main();
+
+/**
+ * findClosestDevsuiteRoot
+ * 
+ * Tries to find the closest parent directory (including the current) that contains
+ * DEVSUITERC_FILENAME. Will return boolean false if no rc file was found.  
+ * 
+ * @return String devsuiteRootDirectory or false if none was found.
+ */
+function findClosestDevsuiteRoot() {
+    var pathPieces = process.cwd().split(path.sep);
+
+    var previousPieces = [];
+    var testPaths = pathPieces.map(pathPiece => {
+        previousPieces.push(pathPiece);
+        return previousPieces.join(path.sep);
+    });
+
+    // Reverse it, because we want to start searching as close
+    // to our current directory as possible.
+    testPaths = testPaths.reverse();
+
+    var closestDevsuiteRoot = testPaths.find(testPath => {
+        return fs.existsSync(path.join(testPath, DEVSUITERC_FILENAME));
+    });
+
+    if (closestDevsuiteRoot) {
+        return closestDevsuiteRoot;
+    } else {
+        return false;
+    }
+}
+
+/**
+ * tryReadDevsuiteRc 
+ * 
+ * Tries to read the devsuiterc file. Will return false if no file was found
+ * will also return false if the devsuiterc raises an error. 
+ * 
+ * @param String directory containing a devsuiteRc file. 
+ */
+function tryReadDevsuiteRc(directory) {
+    var rcFile = path.join(directory, DEVSUITERC_FILENAME);
+
+    try {
+        return require(rcFile);
+    } catch (err) {
+        console.error(err);
+        return false;
+    }
+}
+
+/**
+ * getRegistryFilename
+ * 
+ * @return String filename of the global devsuites.json file.
+ */
+function getRegistryFilename() {
+    var file = path.join(process.env.HOME, '.devsuites.json');
+    return file;
+}
+
+/**
+ * @return Array<DevsuiteEntry>
+ */
+function getRegistryEntries() {
+    var file = getRegistryFilename();
+    var data = [];
+    if (fs.existsSync(file)) {
+        try { 
+            data = JSON.parse(fs.readFileSync(file));
+        } catch (err) {
+            throw new Error(file + ' contains invalid json.');
+        }
+    }
+    return data;
+}
+
+/**
+ * Adds a DevsuiteEntry to the global devsuites.json file and write the file.
+ * 
+ * @param DevsuiteEntry entry 
+ * @return undefined
+ */
+function createRegistryEntry(entry) {
+    var file = getRegistryFilename();
+
+    var data = getRegistryEntries();
+
+    data.push(entry);
+
+    return fs.writeFileSync(file, JSON.stringify(data, null, 3));
+}
+
+function main() {
+    var args = process.argv.slice(2);
+
+    var functions = {
+        /**
+         * devsuite enter [name] 
+         * 
+         * Spawns a new shell with closest development suite as 
+         * unit.
+         */
+        enter(name) {
+            if (name) {
+                var entries = getRegistryEntries();
+                var regex = new RegExp(name, 'i');
+                var foundEntry = entries.find(entry => {
+                    return regex.test(entry.name);
+                })   
+                var devsuitePath = foundEntry.directory;
+            } else {
+                var devsuitePath = findClosestDevsuiteRoot();
+            }
+
+            return spawn(process.env.SHELL, [], {
+                cwd: devsuitePath,
+                env: process.env,
+                stdio: 'inherit'
+            });
+        },
+        /**
+         * devsuite bookmark
+         * 
+         * Register current directory as development suite 
+         * with a name.
+         */
+        async bookmark() {
+            console.log("Current directory: " + process.cwd());
+
+            var entries = getRegistryEntries();
+            var existingEntry = entries.find(entry => {
+                return entry.directory == process.cwd();
+            })
+            
+            if (existingEntry) {
+                console.log("This directory is already bookmarked:");
+                console.log(JSON.stringify(existingEntry, null, 3));
+                return;
+            }
+
+            const readline = require('readline');
+
+            const rl = readline.createInterface({
+                input: process.stdin,
+                output: process.stdout
+            });
+
+            const ask = (question) => {
+                return new Promise(resolve => {
+                    rl.question(question, resolve);
+                })
+            }
+            const confirm = async (question) => {
+                var answer = await ask(question + ' [Y/n]');
+                if (answer.trim().match(/y(es)?/i)) {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+            
+            if (await confirm('Bookmark current location?')) {
+                var defaultName = process.cwd().split(path.sep).pop();
+                var name = await ask('Name for development suite? (default: ' + defaultName + ')');
+
+                if (!name) {
+                    name = defaultName;
+                }
+
+                createRegistryEntry({
+                    directory: process.cwd(),
+                    name: name
+                });    
+                
+                var rcFile = path.join(process.cwd(), DEVSUITERC_FILENAME);
+                if (!fs.existsSync()) {
+                    fs.writeFileSync(rcFile, [
+                        '/**********************************',
+                        ' * Development suite ' + name,
+                        ' * Registered at ' + (new Date()),
+                        ' **********************************/',
+                        '',
+                        'module.exports = {',
+                        '   name: ' + JSON.stringify(name),
+                        '}'
+                    ].join("\n"));
+                }
+            } 
+            
+            rl.close();
+        },
+
+        /**
+         * devsuite list 
+         * 
+         * List the registered development suites.
+         * Switch to one by typing devsuite enter [name]
+         */
+        list() {
+            var entries = getRegistryEntries();
+            var counter = 0;
+            console.log("Registered devsuites:\n");
+            entries.map(entry => {
+                counter++;
+
+                console.log(counter + ") " + entry.name + ": " + entry.directory);
+            })
+        }
+    }
+
+    // If the first argument to devsuite is one of the registered functions, execute it.
+    if (args[0] in functions) {
+        return functions[args[0]](args.slice(1));
+    }
+
+    // Otherwise, if any argument is given
+    if (args.length) {
+        var devsuitePath = findClosestDevsuiteRoot();
+        var devsuiteRc = tryReadDevsuiteRc(devsuitePath);
+
+        console.log("Working in: " + devsuitePath);
+        
+        var commandExists = require('command-exists').sync;
+
+        // If its not an existing command inside $PATH, try to interpret it as npm run script.
+        if (!commandExists(args[0])) {
+            var npmPackageDir = devsuitePath;
+
+            if (devsuiteRc && devsuiteRc.runNpmCommandsAgainst) {
+                npmPackageDir = path.join(npmPackageDir, devsuiteRc.runNpmCommandsAgainst);
+            }
+
+            return spawn('npm', ['run', ...args], {
+                cwd: npmPackageDir,
+                env: process.env,
+                stdio: 'inherit'
+            });
+        } 
+    
+        // default: try run command against project root directory:
+        return spawn(args.shift(), args, {
+            cwd: devsuitePath, 
+            env: process.env,
+            stdio: 'inherit'
+        });
+    } else {
+        var devsuitePath = findClosestDevsuiteRoot();
+
+        console.log("Devsuite root directory: " + devsuitePath);
+        console.log("No arguments received.");
+
+        console.log("");
+        
+        console.log("Usage:");
+        console.log("   devsuite list              - lists the registered devsuites from $HOME/.devsuites.json");
+        console.log("   devsuite bookmark          - register current working directory in $HOME/.devsuites.json");
+        console.log("   devsuite enter [project]   - Opens a $SHELL with the project root directory as cwd.");
+        console.log("   devsuite [any command] [...args] - Run an existing terminal command at the project root directory");
+        console.log("   devsuite [npm script]      - If the command does not exist it will try npm run [script] intead.");
+
+    }
+}
+

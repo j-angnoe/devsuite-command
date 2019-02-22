@@ -1,0 +1,12 @@
+{
+  "name": "example-devsuite-root",
+  "version": "0.0.1",
+  "description": "Example devsuite root",
+  "main": "index.js",
+  "scripts": {
+    "somescript" : "echo 'This is somescript defined in example-devsuite-root/package.json'",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
