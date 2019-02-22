@@ -6,7 +6,7 @@
   "bin": {
     "devsuite": "./bin/devsuite"
   },
-  "files" : [
+  "files": [
     "bin/devsuite",
     "README.md"
   ],

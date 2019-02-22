@@ -134,7 +134,7 @@ function main() {
          * Register current directory as development suite 
          * with a name.
          */
-        async bookmark() {
+        async bookmark(name) {
             console.log("Current directory: " + process.cwd());
 
             var entries = getRegistryEntries();
@@ -148,6 +148,15 @@ function main() {
                 return;
             }
 
+            if (name) {
+                // Create a bookmark without interaction
+                // devsuite bookmark [name]
+                writeBookmark(process.cwd(), name);
+                console.log('Bookmarked as ' + name);
+                return;
+            }
+
+            // Create bookmark interactively
             const readline = require('readline');
 
             const rl = readline.createInterface({
@@ -177,12 +186,20 @@ function main() {
                     name = defaultName;
                 }
 
+                await writeBookmark(process.cwd(), name);
+                console.log('Bookmarked as ' + name);
+            } 
+            
+            rl.close();
+
+            async function writeBookmark(directory, name) {
+
                 createRegistryEntry({
-                    directory: process.cwd(),
+                    directory: directory,
                     name: name
                 });    
                 
-                var rcFile = path.join(process.cwd(), DEVSUITERC_FILENAME);
+                var rcFile = path.join(directory, DEVSUITERC_FILENAME);
                 if (!fs.existsSync()) {
                     fs.writeFileSync(rcFile, [
                         '/**********************************',
@@ -195,9 +212,7 @@ function main() {
                         '}'
                     ].join("\n"));
                 }
-            } 
-            
-            rl.close();
+            }
         },
 
         /**
@@ -220,7 +235,7 @@ function main() {
 
     // If the first argument to devsuite is one of the registered functions, execute it.
     if (args[0] in functions) {
-        return functions[args[0]](args.slice(1));
+        return functions[args[0]](...args.slice(1));
     }
 
     // Otherwise, if any argument is given
@@ -260,7 +275,7 @@ function main() {
         console.log("No arguments received.");
 
         console.log("");
-        
+
         console.log("Usage:");
         console.log("   devsuite list              - lists the registered devsuites from $HOME/.devsuites.json");
         console.log("   devsuite bookmark          - register current working directory in $HOME/.devsuites.json");
